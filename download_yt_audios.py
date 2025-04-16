@@ -15,7 +15,7 @@ logging.basicConfig(level=logging.INFO)
 def sanitize_name(name: str) -> str:
     name = re.sub(r"\s+", "_", name)
     name = re.sub(r"[^a-zA-Z0-9_-]", "", name)
-    return name
+    return name.lower()
 
 def load_channels_from_yaml(path: Path) -> list[YTChannel]:
     with open(path, "r", encoding="utf-8") as f:
@@ -46,6 +46,7 @@ def main():
     parser.add_argument("--output-dir", required=True, help="Directory to store downloaded audios.")
     parser.add_argument("--min-wait", type=int, default=10, help="Minimum wait time in seconds between downloads.")
     parser.add_argument("--max-wait", type=int, default=60, help="Maximum wait time in seconds between downloads.")
+    parser.add_argument("--only-channels", nargs='*', help="List of channel names to include. Others will be ignored.")
     args = parser.parse_args()
 
     input_file = Path(args.input_file)
@@ -53,6 +54,15 @@ def main():
     output_dir.mkdir(parents=True, exist_ok=True)
 
     channels = load_channels_from_yaml(input_file)
+
+    # Filter by channel names if requested
+    if args.only_channels:
+        wanted = {sanitize_name(name) for name in args.only_channels}
+        channels = [ch for ch in channels if sanitize_name(ch.title) in wanted]
+        if not channels:
+            logger.info("No matching channels found based on names.")
+            return
+        logger.info(f"Filtering: Using only {len(channels)} channel(s).")
 
     videos_to_download = []
     already_downloaded = 0
@@ -76,12 +86,11 @@ def main():
         logger.info("No new videos to download. Exiting.")
         return
 
-    # Organize videos by channel key (channel.url is unique & hashable)
     videos_by_channel = {}
     channel_lookup = {}
 
     for ch, video in videos_to_download:
-        ch_key = ch.url
+        ch_key = sanitize_name(ch.title)
         channel_lookup[ch_key] = ch
         videos_by_channel.setdefault(ch_key, []).append(video)
 
